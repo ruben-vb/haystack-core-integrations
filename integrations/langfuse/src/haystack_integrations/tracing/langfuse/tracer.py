@@ -1,4 +1,5 @@
 import contextlib
+import os
 from typing import Any, Dict, Iterator, Optional, Union
 
 from haystack.dataclasses import ChatMessage
@@ -6,6 +7,11 @@ from haystack.tracing import Span, Tracer, tracer
 from haystack.tracing import utils as tracing_utils
 
 import langfuse
+
+HAYSTACK_LANGFUSE_ENFORCE_FLUSH_ENV_VAR = "HAYSTACK_LANGFUSE_ENFORCE_FLUSH"
+_SUPPORTED_GENERATORS = ["AzureOpenAIGenerator", "OpenAIGenerator"]
+_SUPPORTED_CHAT_GENERATORS = ["AzureOpenAIChatGenerator", "OpenAIChatGenerator"]
+_ALL_SUPPORTED_GENERATORS = _SUPPORTED_GENERATORS + _SUPPORTED_CHAT_GENERATORS
 
 
 class LangfuseSpan(Span):
@@ -93,6 +99,7 @@ class LangfuseTracer(Tracer):
         self._context: list[LangfuseSpan] = []
         self._name = name
         self._public = public
+        self.enforce_flush = os.getenv(HAYSTACK_LANGFUSE_ENFORCE_FLUSH_ENV_VAR, "true").lower() == "true"
 
     @contextlib.contextmanager
     def trace(self, operation_name: str, tags: Optional[Dict[str, Any]] = None) -> Iterator[Span]:
@@ -105,7 +112,7 @@ class LangfuseTracer(Tracer):
         tags = tags or {}
         span_name = tags.get("haystack.component.name", operation_name)
 
-        if tags.get("haystack.component.type") in ["OpenAIGenerator", "OpenAIChatGenerator"]:
+        if tags.get("haystack.component.type") in _ALL_SUPPORTED_GENERATORS:
             span = LangfuseSpan(self.current_span().raw_span().generation(name=span_name))
         else:
             span = LangfuseSpan(self.current_span().raw_span().span(name=span_name))
@@ -115,18 +122,18 @@ class LangfuseTracer(Tracer):
 
         yield span
 
-        if tags.get("haystack.component.type") == "OpenAIGenerator":
+        if tags.get("haystack.component.type") in _SUPPORTED_GENERATORS:
             meta = span._data.get("haystack.component.output", {}).get("meta")
             if meta:
                 # Haystack returns one meta dict for each message, but the 'usage' value
                 # is always the same, let's just pick the first item
                 m = meta[0]
-                span._span.update(usage=m.get("usage"), model=m.get("model"))
-        elif tags.get("haystack.component.type") == "OpenAIChatGenerator":
+                span._span.update(usage=m.get("usage") or None, model=m.get("model"))
+        elif tags.get("haystack.component.type") in _SUPPORTED_CHAT_GENERATORS:
             replies = span._data.get("haystack.component.output", {}).get("replies")
             if replies:
                 meta = replies[0].meta
-                span._span.update(usage=meta.get("usage"), model=meta.get("model"))
+                span._span.update(usage=meta.get("usage") or None, model=meta.get("model"))
 
         pipeline_input = tags.get("haystack.pipeline.input_data", None)
         if pipeline_input:
@@ -137,6 +144,15 @@ class LangfuseTracer(Tracer):
 
         span.raw_span().end()
         self._context.pop()
+
+        if len(self._context) == 1:
+            # The root span has to be a trace, which need to be removed from the context after the pipeline run
+            self._context.pop()
+
+            if self.enforce_flush:
+                self.flush()
+
+    def flush(self):
         self._tracer.flush()
 
     def current_span(self) -> Span:

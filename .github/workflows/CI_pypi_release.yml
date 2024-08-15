@@ -20,6 +20,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.HAYSTACK_BOT_TOKEN }}
+          fetch-depth: 0
 
       - name: Install Hatch
         run: pip install hatch
@@ -45,22 +48,20 @@ jobs:
         run: hatch publish -y
 
       - name: Generate changelog
-        uses: tj-actions/git-cliff@v1
+        uses: orhun/git-cliff-action@v3
+        env:
+          OUTPUT: "${{ steps.pathfinder.outputs.project_path }}/CHANGELOG.md"
         with:
+          config: cliff.toml
           args: >
             --include-path "${{ steps.pathfinder.outputs.project_path }}/*"
             --tag-pattern "${{ steps.pathfinder.outputs.project_path }}-v*"
-            -o "${{ steps.pathfinder.outputs.project_path }}/CHANGELOG.md"
 
       - name: Commit changelog
-        shell: bash
-        env:
-          GITHUB_TOKEN: ${{ secrets.HAYSTACK_BOT_TOKEN }}
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git fetch
-          git checkout main
-          git add ${{ steps.pathfinder.outputs.project_path }}
-          git commit -m"Update the changelog"
-          git push origin main
+        uses: EndBug/add-and-commit@v9
+        with:
+          author_name: "HaystackBot"
+          author_email: "accounts@deepset.ai"
+          message: "Update the changelog"
+          add: ${{ steps.pathfinder.outputs.project_path }}
+          push: origin HEAD:main
