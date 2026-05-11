@@ -1,5 +1,12 @@
 # Changelog
 
+## [integrations/amazon_bedrock-v6.9.0] - 2026-05-11
+
+### 🐛 Bug Fixes
+
+- Normalize token usage conversion in AmazonBedrockGenerator (#3247)
+
+
 ## [integrations/amazon_bedrock-v6.8.2] - 2026-05-06
 
 ### 🐛 Bug Fixes
