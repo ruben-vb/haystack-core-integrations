@@ -4,3 +4,13 @@ updates:
     directory: '/'
     schedule:
       interval: 'daily'
+    cooldown:
+      default-days: 1
+
+  - package-ecosystem: 'pip'
+    directories:
+      - 'integrations/*'
+    schedule:
+      interval: 'daily'
+    cooldown:
+      default-days: 1
